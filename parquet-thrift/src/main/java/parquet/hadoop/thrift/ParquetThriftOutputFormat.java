@@ -18,6 +18,7 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.thrift.TBase;
 
 import parquet.hadoop.ParquetOutputFormat;
+import parquet.hadoop.ParquetRecordWriter;
 import parquet.hadoop.util.ContextUtil;
 
 /**
@@ -37,7 +38,11 @@ public class ParquetThriftOutputFormat<T extends TBase<?,?>> extends ParquetOutp
   }
 
   public ParquetThriftOutputFormat() {
-    super(new ThriftWriteSupport<T>());
+    this(null);
+  }
+
+  public ParquetThriftOutputFormat(ParquetRecordWriter.MetadataGenerator<T> metaDataGenerator) {
+    super(new ThriftWriteSupport<T>(), metaDataGenerator);
   }
 
 }

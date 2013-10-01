@@ -22,6 +22,7 @@ import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.protocol.TProtocolFactory;
 
 import parquet.hadoop.ParquetOutputFormat;
+import parquet.hadoop.ParquetRecordWriter;
 import parquet.hadoop.util.ContextUtil;
 
 /**
@@ -49,7 +50,7 @@ public class ParquetThriftBytesOutputFormat extends ParquetOutputFormat<BytesWri
    * Used when settings are set in the configuration
    */
   public ParquetThriftBytesOutputFormat() {
-    super(new ThriftBytesWriteSupport());
+    super(new ThriftBytesWriteSupport(), null);
   }
 
   /**
@@ -62,7 +63,21 @@ public class ParquetThriftBytesOutputFormat extends ParquetOutputFormat<BytesWri
    * @param buffered whether we should buffer each record
    */
   public ParquetThriftBytesOutputFormat(TProtocolFactory protocolFactory, Class<? extends TBase<?, ?>> thriftClass, boolean buffered) {
-    super(new ThriftBytesWriteSupport(protocolFactory, thriftClass, buffered));
+    this(protocolFactory, thriftClass, buffered, null);
+  }
+
+  /**
+   *  The buffered implementation will buffer each record and deal with invalid records (more expansive).
+   *  when catching an exception the record can be discarded.
+   *  The non-buffered implementation will stream field by field. Exceptions are unrecoverable and the file must be closed when an invalid record is written.
+   *
+   * @param protocolFactory the protocol factory to use to read the bytes
+   * @param thriftClass thriftClass the class to exctract the schema from
+   * @param buffered whether we should buffer each record
+   * @param metaDataGenerator the class used to generate file meta data or null
+   */
+  public ParquetThriftBytesOutputFormat(TProtocolFactory protocolFactory, Class<? extends TBase<?, ?>> thriftClass, boolean buffered, ParquetRecordWriter.MetadataGenerator<BytesWritable> metaDataGenerator) {
+    super(new ThriftBytesWriteSupport(protocolFactory, thriftClass, buffered), metaDataGenerator);
   }
 
 }

@@ -18,6 +18,9 @@ package parquet.hadoop;
 import java.io.Closeable;
 import java.io.IOException;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 
@@ -34,6 +37,8 @@ public class ParquetWriter<T> implements Closeable {
   public static final int DEFAULT_PAGE_SIZE = 1 * 1024 * 1024;
 
   private final InternalParquetRecordWriter<T> writer;
+  private Map<String,String> protectedMetaData;
+  private Map<String,String> fileMetaData;
 
   /**
    * Create a new ParquetWriter.
@@ -81,7 +86,9 @@ public class ParquetWriter<T> implements Closeable {
 
     CodecFactory codecFactory = new CodecFactory(conf);
     CodecFactory.BytesCompressor compressor =	codecFactory.getCompressor(compressionCodecName, 0);
-    this.writer = new InternalParquetRecordWriter<T>(fileWriter, writeSupport, schema, writeContext.getExtraMetaData(), blockSize, pageSize, compressor, enableDictionary, validating);
+    this.protectedMetaData = writeContext.getExtraMetaData();
+    this.fileMetaData = new HashMap<String,String>(protectedMetaData);
+    this.writer = new InternalParquetRecordWriter<T>(fileWriter, writeSupport, schema, blockSize, pageSize, compressor, enableDictionary, validating);
 
   }
 
@@ -105,10 +112,39 @@ public class ParquetWriter<T> implements Closeable {
     }
   }
 
+  public boolean containsFileMetaDataKey(String key) {
+    return fileMetaData.containsKey(key);
+  }
+
+  public String getFileMetaData(String key) {
+    return fileMetaData.get(key);
+  }
+
+
+  public void putFileMetaData(String key, String value) {
+    if (fileMetaData == null) {
+      throw new IllegalStateException("cannot add file metadata after calling close()");
+    }
+
+    if (protectedMetaData.containsKey(key)) {
+      throw new IllegalArgumentException("cannot override protected file metadata with key '" + key + "'");
+    }
+
+    fileMetaData.put(key, value);
+  }
+
+  public void putAllFileMetaData(Map<String,String> metaData) {
+    for (Map.Entry<String,String> entry : metaData.entrySet()) {
+      putFileMetaData(entry.getKey(), entry.getValue());
+    }
+  }
+
   @Override
   public void close() throws IOException {
     try {
-      writer.close();
+      writer.close(fileMetaData);
+      fileMetaData = null;
+      protectedMetaData = null;
     } catch (InterruptedException e) {
       throw new IOException(e);
     }

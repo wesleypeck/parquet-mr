@@ -91,25 +91,38 @@ public class ParquetOutputFormat<T> extends FileOutputFormat<Void, T> {
   public static final String WRITE_SUPPORT_CLASS = "parquet.write.support.class";
   public static final String ENABLE_DICTIONARY   = "parquet.enable.dictionary";
   public static final String VALIDATION          = "parquet.validation";
+  public static final String FILE_METADATA_GEN   = "parquet.file.metadata.generator";
+
+  public static Class<?> getConfiguredClass(JobContext jobContext, String key, Class<?> xface) {
+    final String className = getConfiguration(jobContext).get(key);
+    if (className == null) {
+      return null;
+    }
+    try {
+      final Class<?> clazz = Class.forName(className);
+      if (!xface.isAssignableFrom(clazz)) {
+        throw new BadConfigurationException("class " + className + " set in job conf at " + key + " is not a subclass of " + xface.getName());
+      }
+      return clazz;
+    } catch (ClassNotFoundException e) {
+      throw new BadConfigurationException("could not instanciate class " + className + " set in job conf at " + key, e);
+    }
+  }
 
   public static void setWriteSupportClass(Job job,  Class<?> writeSupportClass) {
     getConfiguration(job).set(WRITE_SUPPORT_CLASS, writeSupportClass.getName());
   }
 
   public static Class<?> getWriteSupportClass(JobContext jobContext) {
-    final String className = getConfiguration(jobContext).get(WRITE_SUPPORT_CLASS);
-    if (className == null) {
-      return null;
-    }
-    try {
-      final Class<?> writeSupportClass = Class.forName(className);
-      if (!WriteSupport.class.isAssignableFrom(writeSupportClass)) {
-        throw new BadConfigurationException("class " + className + " set in job conf at " + WRITE_SUPPORT_CLASS + " is not a subclass of WriteSupport");
-      }
-      return writeSupportClass;
-    } catch (ClassNotFoundException e) {
-      throw new BadConfigurationException("could not instanciate class " + className + " set in job conf at " + WRITE_SUPPORT_CLASS , e);
-    }
+    return getConfiguredClass(jobContext, WRITE_SUPPORT_CLASS, WriteSupport.class);
+  }
+
+  public static void setFileMetadataGenerator(Job job, Class<? extends ParquetRecordWriter.MetadataGenerator<?>> metadataGeneratorClass) {
+    getConfiguration(job).set(FILE_METADATA_GEN, metadataGeneratorClass.getName());
+  }
+
+  public static Class<?> getFileMetadataGeneratorClass(JobContext jobContext) {
+    return getConfiguredClass(jobContext, FILE_METADATA_GEN, ParquetRecordWriter.MetadataGenerator.class);
   }
 
   public static void setBlockSize(Job job, int blockSize) {
@@ -157,6 +170,7 @@ public class ParquetOutputFormat<T> extends FileOutputFormat<Void, T> {
   }
 
   private WriteSupport<T> writeSupport;
+  private ParquetRecordWriter.MetadataGenerator<T> metaDataGenerator;
   private ParquetOutputCommitter committer;
 
   /**
@@ -165,8 +179,9 @@ public class ParquetOutputFormat<T> extends FileOutputFormat<Void, T> {
    * @param schema the schema of the records
    * @param extraMetaData extra meta data to be stored in the footer of the file
    */
-  public <S extends WriteSupport<T>> ParquetOutputFormat(S writeSupport) {
+  public <S extends WriteSupport<T>> ParquetOutputFormat(S writeSupport, ParquetRecordWriter.MetadataGenerator<T> metaDataGenerator) {
     this.writeSupport = writeSupport;
+    this.metaDataGenerator = metaDataGenerator;
   }
 
   /**
@@ -206,6 +221,19 @@ public class ParquetOutputFormat<T> extends FileOutputFormat<Void, T> {
       }
     }
 
+    if (metaDataGenerator == null) {
+      Class<?> metaDataGeneratorClass = getFileMetadataGeneratorClass(taskAttemptContext);
+      if (metaDataGeneratorClass != null) {
+        try {
+          metaDataGenerator = (ParquetRecordWriter.MetadataGenerator<T>) metaDataGeneratorClass.newInstance();
+        } catch (InstantiationException e) {
+          throw new BadConfigurationException("could not instantiate " + metaDataGeneratorClass.getName(), e);
+        } catch (IllegalAccessException e) {
+          throw new BadConfigurationException("Illegal access to class " + metaDataGeneratorClass.getName(), e);
+        }
+      }
+    }
+
     String extension = ".parquet";
     CompressionCodecName codec;
     if (isCompressionSet(taskAttemptContext)) { // explicit parquet config
@@ -235,6 +263,7 @@ public class ParquetOutputFormat<T> extends FileOutputFormat<Void, T> {
         writeSupport,
         init.getSchema(),
         init.getExtraMetaData(),
+        metaDataGenerator,
         blockSize, pageSize,
         codecFactory.getCompressor(codec, pageSize),
         enableDictionary,

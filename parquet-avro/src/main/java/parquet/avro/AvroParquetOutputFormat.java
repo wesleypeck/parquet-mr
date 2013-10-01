@@ -18,8 +18,10 @@ package parquet.avro;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.hadoop.mapreduce.Job;
+
 import parquet.avro.AvroWriteSupport;
 import parquet.hadoop.ParquetOutputFormat;
+import parquet.hadoop.ParquetRecordWriter;
 import parquet.hadoop.util.ContextUtil;
 
 /**
@@ -32,7 +34,11 @@ public class AvroParquetOutputFormat extends ParquetOutputFormat<IndexedRecord> 
   }
 
   public AvroParquetOutputFormat() {
-    super(new AvroWriteSupport());
+    this(null);
+  }
+
+  public AvroParquetOutputFormat(ParquetRecordWriter.MetadataGenerator<IndexedRecord> metaDataGenerator) {
+    super(new AvroWriteSupport(), metaDataGenerator);
   }
 
 }

@@ -54,6 +54,6 @@ public class ExampleOutputFormat extends ParquetOutputFormat<Group> {
   }
 
   public ExampleOutputFormat() {
-    super(new GroupWriteSupport());
+    super(new GroupWriteSupport(), null);
   }
 }

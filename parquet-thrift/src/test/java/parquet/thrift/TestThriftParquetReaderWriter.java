@@ -18,6 +18,8 @@ package parquet.thrift;
 import java.io.IOException;
 import java.util.Arrays;
 
+import java.util.Map;
+
 import junit.framework.Assert;
 
 import org.apache.hadoop.conf.Configuration;
@@ -25,7 +27,10 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.junit.Test;
 
+import parquet.hadoop.ParquetFileReader;
 import parquet.hadoop.metadata.CompressionCodecName;
+import parquet.hadoop.metadata.FileMetaData;
+import parquet.hadoop.metadata.ParquetMetadata;
 
 import com.twitter.data.proto.tutorial.thrift.AddressBook;
 import com.twitter.data.proto.tutorial.thrift.Name;
@@ -50,6 +55,7 @@ public class TestThriftParquetReaderWriter {
     { // write
       ThriftParquetWriter<AddressBook> thriftParquetWriter = new ThriftParquetWriter<AddressBook>(f, AddressBook.class, CompressionCodecName.UNCOMPRESSED);
       thriftParquetWriter.write(original);
+      thriftParquetWriter.putFileMetaData("putMetaDataKey", "putMetaDataValue");
       thriftParquetWriter.close();
     }
 
@@ -65,6 +71,15 @@ public class TestThriftParquetReaderWriter {
       AddressBook read = thriftParquetReader.read();
       Assert.assertEquals(original, read);
       thriftParquetReader.close();
+    }
+
+    { // check for custom metadata in file
+      Configuration conf = new Configuration();
+      ParquetMetadata metaData = ParquetFileReader.readFooter(conf, f);
+      FileMetaData fileMetaData = metaData.getFileMetaData();
+      Map<String,String> keyValueMap = fileMetaData.getKeyValueMetaData();
+
+      Assert.assertEquals("putMetaDataValue", keyValueMap.get("putMetaDataKey"));
     }
   }
 }

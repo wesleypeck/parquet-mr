@@ -16,18 +16,26 @@
 package parquet.avro;
 
 import com.google.common.collect.ImmutableList;
+
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.junit.Assert;
 import org.junit.Test;
+
+import parquet.hadoop.ParquetFileReader;
 import parquet.hadoop.ParquetReader;
 import parquet.hadoop.ParquetWriter;
 import parquet.hadoop.metadata.CompressionCodecName;
+import parquet.hadoop.metadata.FileMetaData;
+import parquet.hadoop.metadata.ParquetMetadata;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+
 import static parquet.filter.ColumnRecordFilter.column;
 import static parquet.filter.ColumnPredicates.equalTo;
 import static parquet.hadoop.ParquetWriter.DEFAULT_BLOCK_SIZE;
@@ -41,7 +49,7 @@ public class TestSpecificReadWrite {
 
   @Test
   public void testReadWriteSpecific() throws IOException {
-    Path path = writeCarsToParquetFile(10, CompressionCodecName.UNCOMPRESSED, false);
+    Path path = writeCarsToParquetFile(10, CompressionCodecName.UNCOMPRESSED, false, false);
     ParquetReader<Car> reader = new AvroParquetReader<Car>(path);
     for (int i = 0; i < 10; i++) {
       assertEquals(getVwPolo().toString(),reader.read().toString());
@@ -53,7 +61,7 @@ public class TestSpecificReadWrite {
 
   @Test
   public void testReadWriteSpecificWithDictionary() throws IOException {
-    Path path = writeCarsToParquetFile(10, CompressionCodecName.UNCOMPRESSED, true);
+    Path path = writeCarsToParquetFile(10, CompressionCodecName.UNCOMPRESSED, true, false);
     ParquetReader<Car> reader = new AvroParquetReader<Car>(path);
     for (int i = 0; i < 10; i++) {
       assertEquals(getVwPolo().toString(),reader.read().toString());
@@ -66,7 +74,7 @@ public class TestSpecificReadWrite {
   @Test
   public void testFilterMatchesMultiple() throws IOException {
 
-    Path path = writeCarsToParquetFile(10, CompressionCodecName.UNCOMPRESSED, false);
+    Path path = writeCarsToParquetFile(10, CompressionCodecName.UNCOMPRESSED, false, false);
 
     ParquetReader<Car> reader = new AvroParquetReader<Car>(path, column("make", equalTo("Volkswagen")));
     for (int i = 0; i < 10; i++) {
@@ -79,7 +87,7 @@ public class TestSpecificReadWrite {
   @Test
   public void testFilterWithDictionary() throws IOException {
 
-    Path path = writeCarsToParquetFile(1,CompressionCodecName.UNCOMPRESSED,true);
+    Path path = writeCarsToParquetFile(1, CompressionCodecName.UNCOMPRESSED, true, false);
 
     ParquetReader<Car> reader = new AvroParquetReader<Car>(path, column("make", equalTo("Volkswagen")));
     assertEquals(getVwPolo().toString(),reader.read().toString());
@@ -90,7 +98,7 @@ public class TestSpecificReadWrite {
   @Test
   public void testFilterOnSubAttribute() throws IOException {
 
-    Path path = writeCarsToParquetFile(1, CompressionCodecName.UNCOMPRESSED, false);
+    Path path = writeCarsToParquetFile(1, CompressionCodecName.UNCOMPRESSED, false, false);
 
     ParquetReader<Car> reader = new AvroParquetReader<Car>(path, column("engine.type", equalTo(EngineType.DIESEL)));
     assertEquals(reader.read().toString(),getVwPassat().toString());
@@ -106,7 +114,22 @@ public class TestSpecificReadWrite {
     assertNull( reader.read());
   }
 
-  private Path writeCarsToParquetFile( int num, CompressionCodecName compression, boolean enableDictionary) throws IOException {
+  @Test
+  public void testFileMetaData() throws IOException {
+
+    Path path = writeCarsToParquetFile(1, CompressionCodecName.UNCOMPRESSED, false, true);
+
+    Configuration conf = new Configuration();
+    ParquetMetadata metaData = ParquetFileReader.readFooter(conf, path);
+    FileMetaData fileMetaData = metaData.getFileMetaData();
+    Map<String,String> keyValueMap = fileMetaData.getKeyValueMetaData();
+
+    assertEquals("putMetaDataValue", keyValueMap.get("putMetaDataKey"));
+    assertEquals("putAllMetaDataValue1", keyValueMap.get("putAllMetaDataKey1"));
+    assertEquals("putAllMetaDataValue2", keyValueMap.get("putAllMetaDataKey2"));
+  }
+
+  private Path writeCarsToParquetFile( int num, CompressionCodecName compression, boolean enableDictionary, boolean addFileMetaData) throws IOException {
     File tmp = File.createTempFile(getClass().getSimpleName(), ".tmp");
     tmp.deleteOnExit();
     tmp.delete();
@@ -123,6 +146,16 @@ public class TestSpecificReadWrite {
       writer.write(vwPassat);
       writer.write(bmwMini);
     }
+
+    if (addFileMetaData) {
+      writer.putFileMetaData("putMetaDataKey", "putMetaDataValue");
+
+      Map<String,String> all = new HashMap<String,String>();
+      all.put("putAllMetaDataKey1", "putAllMetaDataValue1");
+      all.put("putAllMetaDataKey2", "putAllMetaDataValue2");
+      writer.putAllFileMetaData(all);
+    }
+
     writer.close();
     return path;
   }

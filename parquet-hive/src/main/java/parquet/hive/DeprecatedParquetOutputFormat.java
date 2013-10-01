@@ -56,7 +56,7 @@ public class DeprecatedParquetOutputFormat extends FileOutputFormat<Void, ArrayW
   protected ParquetOutputFormat<ArrayWritable> realOutputFormat;
 
   public DeprecatedParquetOutputFormat() {
-    realOutputFormat = new ParquetOutputFormat<ArrayWritable>(new DataWritableWriteSupport());
+    realOutputFormat = new ParquetOutputFormat<ArrayWritable>(new DataWritableWriteSupport(), null);
   }
 
   public DeprecatedParquetOutputFormat(final OutputFormat<Void, ArrayWritable> mapreduceOutputFormat) {

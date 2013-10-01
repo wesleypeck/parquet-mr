@@ -40,7 +40,6 @@ class InternalParquetRecordWriter<T> {
   private final ParquetFileWriter w;
   private final WriteSupport<T> writeSupport;
   private final MessageType schema;
-  private final Map<String, String> extraMetaData;
   private final int blockSize;
   private final int pageSize;
   private final BytesCompressor compressor;
@@ -65,15 +64,15 @@ class InternalParquetRecordWriter<T> {
    * @param codec the codec used to compress
    */
   public InternalParquetRecordWriter(ParquetFileWriter w, WriteSupport<T> writeSupport,
-      MessageType schema, Map<String, String> extraMetaData, int blockSize,
-      int pageSize, BytesCompressor compressor, boolean enableDictionary, boolean validating) {
+      MessageType schema, int blockSize, int pageSize, BytesCompressor compressor, 
+      boolean enableDictionary, boolean validating) {
     if (writeSupport == null) {
       throw new NullPointerException("writeSupport");
     }
     this.w = w;
     this.writeSupport = writeSupport;
     this.schema = schema;
-    this.extraMetaData = extraMetaData;
+    //this.extraMetaData = extraMetaData;
     this.blockSize = blockSize;
     this.pageSize = pageSize;
     this.compressor = compressor;
@@ -96,9 +95,9 @@ class InternalParquetRecordWriter<T> {
     writeSupport.prepareForWrite(columnIO.getRecordWriter(store));
   }
 
-  public void close() throws IOException, InterruptedException {
+  public void close(Map<String,String> fileMetaData) throws IOException, InterruptedException {
     flushStore();
-    w.end(extraMetaData);
+    w.end(fileMetaData);
   }
 
   public void write(T value) throws IOException, InterruptedException {

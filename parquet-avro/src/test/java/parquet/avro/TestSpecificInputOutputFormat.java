@@ -16,6 +16,7 @@
 package parquet.avro;
 
 import com.google.common.collect.Lists;
+
 import org.apache.avro.Schema;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -26,6 +27,7 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.junit.Test;
+
 import parquet.Log;
 import parquet.column.ColumnReader;
 import parquet.filter.ColumnPredicates;
@@ -33,10 +35,19 @@ import parquet.filter.ColumnRecordFilter;
 import parquet.filter.RecordFilter;
 import parquet.filter.UnboundRecordFilter;
 
+import parquet.hadoop.ParquetFileReader;
+import parquet.hadoop.ParquetRecordWriter;
+import parquet.hadoop.metadata.FileMetaData;
+import parquet.hadoop.metadata.ParquetMetadata;
+
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static java.lang.Thread.sleep;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
@@ -104,6 +115,34 @@ public class TestSpecificInputOutputFormat {
     }
   }
 
+  public static class MyMetadataGenerator implements ParquetRecordWriter.MetadataGenerator<Car> {
+    private Set<String> allMakes = new HashSet<String>();
+    private Long minYear = Long.MAX_VALUE;
+    private Long maxYear = Long.MIN_VALUE;
+
+    @Override
+    public void generateFileMetadata(ParquetRecordWriter<Car> recordWriter, Car value) {
+      allMakes.add(value.getMake());
+
+      Long year = value.getYear();
+      if (year < minYear) minYear = year;
+      if (year > maxYear) maxYear = year;
+    }
+
+    @Override
+    public void finalizeFileMetadata(ParquetRecordWriter<Car> recordWriter) {
+      StringBuilder builder = new StringBuilder();
+      for (String make : allMakes) {
+        if (builder.length() != 0) builder.append(',');
+        builder.append(make);
+      }
+
+      recordWriter.putFileMetaData("allMakes", builder.toString());
+      recordWriter.putFileMetaData("minYear", String.valueOf(minYear));
+      recordWriter.putFileMetaData("maxYear", String.valueOf(maxYear));
+    }
+  }
+
   @Test
   public void testReadWrite() throws Exception {
 
@@ -127,6 +166,7 @@ public class TestSpecificInputOutputFormat {
       job.setOutputFormatClass(AvroParquetOutputFormat.class);
       AvroParquetOutputFormat.setOutputPath(job, parquetPath);
       AvroParquetOutputFormat.setSchema(job, Car.SCHEMA$);
+      AvroParquetOutputFormat.setFileMetadataGenerator(job, MyMetadataGenerator.class);
 
       waitForJob(job);
     }
@@ -154,6 +194,7 @@ public class TestSpecificInputOutputFormat {
       job.setOutputFormatClass(AvroParquetOutputFormat.class);
       AvroParquetOutputFormat.setOutputPath(job, outputPath);
       AvroParquetOutputFormat.setSchema(job, Car.SCHEMA$);
+      AvroParquetOutputFormat.setFileMetadataGenerator(job, MyMetadataGenerator.class);
 
       waitForJob(job);
     }
@@ -175,6 +216,16 @@ public class TestSpecificInputOutputFormat {
       ++lineNumber;
     }
     out.close();
+
+    {
+      ParquetMetadata metaData = ParquetFileReader.readFooter(conf, mapperOutput);
+      FileMetaData fileMetaData = metaData.getFileMetaData();
+      Map<String,String> keyValueMap = fileMetaData.getKeyValueMetaData();
+
+      assertEquals("Tesla", keyValueMap.get("allMakes"));
+      assertEquals("2014", keyValueMap.get("minYear"));
+      assertEquals("2014", keyValueMap.get("maxYear"));
+    }
   }
 
   private void waitForJob(Job job) throws Exception {

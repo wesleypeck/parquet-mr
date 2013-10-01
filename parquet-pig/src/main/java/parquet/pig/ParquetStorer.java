@@ -102,7 +102,7 @@ public class ParquetStorer extends StoreFunc implements StoreMetadata {
   public OutputFormat<Void, Tuple> getOutputFormat() throws IOException {
     Schema pigSchema = getSchema();
     MessageType schema = new PigSchemaConverter().convert(pigSchema);
-    return new ParquetOutputFormat<Tuple>(new TupleWriteSupport(schema, pigSchema));
+    return new ParquetOutputFormat<Tuple>(new TupleWriteSupport(schema, pigSchema), null);
   }
 
   /**
