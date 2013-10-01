@@ -17,6 +17,7 @@ package parquet.avro;
 
 import com.google.common.collect.ImmutableList;
 
+import org.apache.avro.Schema;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.junit.Test;
@@ -32,6 +33,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -127,6 +131,44 @@ public class TestSpecificReadWrite {
     assertEquals("putMetaDataValue", keyValueMap.get("putMetaDataKey"));
     assertEquals("putAllMetaDataValue1", keyValueMap.get("putAllMetaDataKey1"));
     assertEquals("putAllMetaDataValue2", keyValueMap.get("putAllMetaDataKey2"));
+  }
+
+  public void testProjection() throws IOException {
+
+    Path path = writeCarsToParquetFile(1, CompressionCodecName.UNCOMPRESSED, false, false);
+    Configuration conf = new Configuration();
+
+    Schema schema = Car.getClassSchema();
+    List<Schema.Field> fields = schema.getFields();
+
+    //Schema.Parser parser = new Schema.Parser();
+    List<Schema.Field> projectedFields = new ArrayList<Schema.Field>();
+    for (Schema.Field field : fields) {
+      String name = field.name();
+      if ("optionalExtra".equals(name) ||
+          "serviceHistory".equals(name)) {
+        continue;
+      }
+
+      //Schema schemaClone = parser.parse(field.schema().toString(false));
+      Schema.Field fieldClone = new Schema.Field(name, field.schema(), field.doc(), field.defaultValue());
+      projectedFields.add(fieldClone);
+    }
+
+    Schema projectedSchema = Schema.createRecord(schema.getName(), schema.getDoc(), schema.getNamespace(), schema.isError());
+    projectedSchema.setFields(projectedFields);
+    AvroReadSupport.setRequestedProjection(conf, projectedSchema);
+
+    ParquetReader<Car> reader = new AvroParquetReader<Car>(conf, path);
+    for (Car car = reader.read(); car != null; car = reader.read()) {
+      assertEquals(car.getDoors() != null, true);
+      assertEquals(car.getEngine() != null, true);
+      assertEquals(car.getMake() != null, true);
+      assertEquals(car.getModel() != null, true);
+      assertEquals(car.getYear() != null, true);
+      assertNull(car.getOptionalExtra());
+      assertNull(car.getServiceHistory());
+    }
   }
 
   private Path writeCarsToParquetFile( int num, CompressionCodecName compression, boolean enableDictionary, boolean addFileMetaData) throws IOException {
